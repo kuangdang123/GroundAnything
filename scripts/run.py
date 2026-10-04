@@ -12,7 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT / "scripts"))
 from config_contract import (relative as checked_relative, validate_native,
                              validate_tree, checkpoint_args, native_inputs, validate_argv, rl_command)
-TARGETS={'dlm-sglang': ['-m', 'infer.serve_sglang'], 'vlm-sglang': ['-m', 'infer.serve_sglang_vlm'], 'vlm-vllm': ['-m', 'infer.serve_vllm'], 'dlm-train': ['-m', 'train.dlm.train_dlm'], 'dlm-serve': ['-m', 'infer.dlm.qwen3_openai_server'], 'eval': ['-m', 'eval.eval_runner'], 'eval-yaml': ['scripts/evaluate.py'], 'rl-24': ['-m', 'train.rl.current.trainer'], 'rl-56': ['-m', 'train.rl.distributed.multiroute_56'], 'rl-64': ['-m', 'train.rl.distributed.multiroute_64']}
+TARGETS={'dlm-sglang': ['-m', 'infer.serve_sglang'], 'vlm-sglang': ['-m', 'infer.serve_sglang_vlm'], 'vlm-vllm': ['-m', 'infer.serve_vllm'], 'dlm-train': ['-m', 'train.dlm.train_dlm'], 'vlm-train': ['-m', 'train.vlm.train_vlm_lora'], 'dlm-serve': ['-m', 'infer.dlm.qwen3_openai_server'], 'eval': ['-m', 'eval.eval_runner'], 'eval-yaml': ['scripts/evaluate.py'], 'rl-24': ['-m', 'train.rl.current.trainer'], 'rl-56': ['-m', 'train.rl.distributed.multiroute_56'], 'rl-64': ['-m', 'train.rl.distributed.multiroute_64']}
 
 def relative(value):
     return checked_relative(ROOT,value)
@@ -36,7 +36,7 @@ def build_command(cfg, *, validate_training=False):
     if entry.startswith("rl-"):
         return rl_command(ROOT,cfg,target,sys.executable)
     argv=list(cfg.get("args",[]))
-    training=entry == "dlm-train"
+    training=entry in {"dlm-train", "vlm-train"}
     if not training:
         if "native_config" in cfg or "distributed" in cfg:
             raise ValueError("native_config/distributed are supported only for training")
@@ -61,8 +61,20 @@ def build_command(cfg, *, validate_training=False):
     with project_context():
         from train.release_parameters import validate_training_fields, dlm_control_args
         validate_training_fields(native)
-    if native.get("model",{}).get("family")!="groundinganything_qwen3":
-        raise ValueError("dlm-train release route requires model.family=groundinganything_qwen3")
+    expected_family = "groundinganything_qwen3" if entry == "dlm-train" else "groundinganything_vlm"
+    if native.get("model",{}).get("family") != expected_family:
+        raise ValueError(f"{entry} release route requires model.family={expected_family}")
+    if entry == "vlm-train":
+        argv = ["--config", cfg["native_config"], *checkpoint_argv]
+        command = [sys.executable, *target, *argv]
+        command.extend(["--nproc-per-node", str(nproc), "--nnodes", str(nodes), "--node-rank", str(rank)])
+        if nodes > 1:
+            address = topology.get("master_addr")
+            port = topology.get("master_port", 29500)
+            if not isinstance(address, str) or not address or type(port) is not int or not 1 <= port <= 65535:
+                raise ValueError("multi-node VLM training requires master_addr and a valid master_port")
+            command.extend(["--master-addr", address, "--master-port", str(port)])
+        return command
     argv=["--mode","DLM","--config",cfg["native_config"],*dlm_control_args(native),*checkpoint_argv]
     command=[sys.executable,"-m","torch.distributed.run",f"--nproc_per_node={nproc}"]
     if nodes==1:

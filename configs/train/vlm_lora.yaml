@@ -1,0 +1,44 @@
+mode: VLM
+meta:
+  experiment: vlm-lora
+  description: GroundAnything VLM LoRA SFT over canonical GAM JSONL.
+model:
+  family: groundinganything_vlm
+  path: weights/base_model
+  output_dir: outputs/vlm_lora
+datasets:
+  - name: game_train
+    path: data/game/train.gam.jsonl
+training:
+  swift_module: sft
+  tuner_type: lora
+  lora_rank: 64
+  lora_alpha: 128
+  lora_dropout: 0.05
+  lora_target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  freeze_llm: true
+  freeze_vit: true
+  freeze_aligner: false
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.03
+  max_length: 4096
+  max_steps: 1500
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  gradient_checkpointing: true
+  dataset_num_proc: 4
+  dataloader_num_workers: 2
+  save_steps: 100
+  logging_steps: 1
+  save_strategy: steps
+  report_to: tensorboard
+  torch_dtype: bfloat16
+  attn_impl: flash_attention_2
