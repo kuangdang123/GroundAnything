@@ -37,7 +37,17 @@ ambiguous prompts, pass `--default-phrase` and inspect the metadata sidecar. Whe
 with the original line and error instead of stopping the rest of the conversion;
 without it, the first malformed row fails the command.
 
-The output is still only annotation JSONL. GroundAnything DLM training consumes
-an Arrow cache plus `cache_manifest.json`; generating that cache is the next
-migration stage. Do not compare LA's `[0,1000]` metrics with GAM's `[0,999]`
-metrics without converting both predictions to pixel space first.
+The output is still annotation JSONL. Build the Arrow cache in the next step:
+
+```powershell
+python tools/build_gam_cache.py `
+  --input data\game\train.gam.jsonl `
+  --cache data\game\cache\train `
+  --manifest data\game\cache\cache_manifest.json `
+  --source-id game_train `
+  --tokenizer weights\base_model
+```
+
+GroundAnything DLM training consumes that Arrow cache plus `cache_manifest.json`.
+Do not compare LA's `[0,1000]` metrics with GAM's `[0,999]` metrics without
+converting both predictions to pixel space first.

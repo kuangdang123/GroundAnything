@@ -4,7 +4,21 @@
 
 Place the base model, tokenizer, processor, and model code in `weights/base_model/`. For inference or checkpoint initialization, place the complete DLM wrapper weights and matching tokenizer in `weights/dlm/`.
 
-Training uses Arrow caches prepared with the matching tokenizer and processor. Each cache requires a `cache_manifest.json`. A generic JSONL-to-cache converter is not included.
+Training uses Arrow caches prepared with the matching tokenizer and processor. Each cache requires a `cache_manifest.json`. Convert canonical GAM JSONL with:
+
+```bash
+python tools/build_gam_cache.py \
+  --input data/game/train.gam.jsonl \
+  --cache data/game/cache/train \
+  --manifest data/game/cache/cache_manifest.json \
+  --source-id game_train \
+  --tokenizer weights/base_model
+```
+
+The exporter refuses to overwrite a non-empty cache, preserves image paths as
+`{"bytes": null, "path": "..."}`, and computes `length` with the selected
+tokenizer. `--allow-approximate-length` is only for dry runs; regenerate lengths
+with the exact training tokenizer before sampling or packing.
 
 Source JSONL rows contain `id`, `messages`, `images`, and `source`. Each `<image>` placeholder corresponds to an image. Spatial answers use object-reference and box markers, coordinate tokens `<0>` through `<999>`, and `</c>`. A bounding box contains four coordinates and a point contains two. DLM checkpoints also require the atomic mask token `|<MASK>|`.
 
