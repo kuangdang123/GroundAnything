@@ -1,0 +1,76 @@
+# Line-ending policy.
+#
+# Historically the working tree was checked out on Windows (core.autocrlf=true,
+# i.e. CRLF on disk) while the Linux devbox had core.autocrlf unset, so the same
+# committed content appeared as 341 "modified" files there purely because of
+# line endings.
+#
+# Pin the policy explicitly: text files are stored with LF in the repository and
+# checked out with LF on every platform. Binary formats are marked so Git never
+# attempts end-of-line translation on them.
+* text=auto eol=lf
+
+# Binary formats: never translate.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.svg binary
+*.mp4 binary
+*.pdf binary
+*.gz binary
+*.tgz binary
+*.zip binary
+*.tar binary
+*.safetensors binary
+*.bin binary
+*.pt binary
+*.pth binary
+*.ckpt binary
+*.arrow binary
+*.parquet binary
+*.npy binary
+*.npz binary
+*.ot binary
+*.onnx binary
+*.pb binary
+*.pkl binary
+*.pickle binary
+*.wasm binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.ico binary
+*.7z binary
+*.bz2 binary
+*.xz binary
+*.zst binary
+
+# Text formats: always LF.
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.toml text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+*.sh text eol=lf
+*.jinja text eol=lf
+*.j2 text eol=lf
+*.csv text eol=lf
+*.tsv text eol=lf
+*.xml text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.cpp text eol=lf
+*.hpp text eol=lf
+Dockerfile text eol=lf

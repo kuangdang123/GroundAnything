@@ -15,6 +15,11 @@ __pycache__/
 # Obsolete/generated release audit directory
 /release/
 
+# Locally downloaded release artifacts: model checkpoints (multi-GB) and the
+# paper PDF. Kept out of git; both are retrieved from their upstream sources.
+/GroundAnything-Model/
+*.pdf
+
 # Credentials and private configuration
 .env
 .env.*
