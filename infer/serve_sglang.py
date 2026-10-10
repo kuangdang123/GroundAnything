@@ -36,6 +36,15 @@ def build_launch(model, output, decoder, mask, vocab, eos, paths, inherited,
     if decoder == 'denoise':
         env.update(GAM_DLM_DECODE_PROFILE='task_profiles', GAM_DLM_SINGLE_TARGET_RULE='1',
                    GAM_DLM_DECODE_TELEMETRY_MODE='off')
+    # Static memory fraction is overridable so a second decoder instance can
+    # share one GPU: the default 0.65 reserves ~52 GB on an 80 GB card, which
+    # two co-located servers cannot both claim. Unset keeps the shipped value.
+    mem_fraction = os.environ.get('GAM_SGLANG_MEM_FRACTION', '0.65')
+    try:
+        if not 0.0 < float(mem_fraction) <= 1.0:
+            raise ValueError
+    except ValueError:
+        raise SystemExit('GAM_SGLANG_MEM_FRACTION must be a float in (0, 1]')
     # This SGLang snapshot initializes its optional classify handler even for
     # generative models. Supply a runtime-only label so startup succeeds; this
     # does not change the released checkpoint or enable classification.
@@ -46,7 +55,7 @@ def build_launch(model, output, decoder, mask, vocab, eos, paths, inherited,
                '{"architectures":["Fast_dVLMForConditionalGeneration"],"id2label":{"0":"LABEL_0"}}', "--skip-server-warmup",
                "--chat-template", str(model / "chat_template.jinja"), "--attention-backend", "triton",
                "--sampling-backend", "pytorch", "--grammar-backend", "none",
-               "--mem-fraction-static", "0.65", "--max-total-tokens", "32768",
+               "--mem-fraction-static", mem_fraction, "--max-total-tokens", "32768",
                "--max-running-requests", "1", "--max-queued-requests", "2",
                "--disable-radix-cache", "--chunked-prefill-size", "16384",
                "--disable-cuda-graph", "--disable-overlap-schedule"]
