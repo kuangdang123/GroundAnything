@@ -17,7 +17,9 @@
 
 只读 `protocol.json` 和 `_samples/<form>/<game>.jsonl`，**不重抽样、不修改 LA 输出**。
 逐文件校验 manifest 的 SHA256 与样本数，图片来自各 game `run_dir/val/images`。
-全套包含 18 游戏、5 类请求（部分 multi_instance 数量不足32，以既有实际清单为准）。
+本轮 notebook CPU 实读校验：18 游戏、1396 请求、88 个非空 game/form cell。
+category=216、description=360、multiclass=180、multi_instance=292、negative=348；两卡分片为692/704请求。
+部分 multi_instance 数量不足32或为空，以既有实际清单为准。
 
 | form | 指标 |
 |---|---|
@@ -90,7 +92,8 @@ cd /workspace/project-nas-1000073/liangjiaqi/GroundAnything
 ```
 
 按 `denoise -> causal -> speculative` 顺序起停，同一张卡、端口8113。
-共享 sample_manifest，默认每个非空game/form取1条，3次重复，先3次warmup不计入测量。
+共享 sample_manifest，默认每个非空game/form取1条：本轮真实清单 dry-run 为88条×3次=264测量/模式。
+先3次warmup不计入测量。三模式共792次测量，另有9次warmup。
 可用 `--speed-per-cell 2 --speed-repeats 5` 扩大；每种模式固定温度0/top_p1、512 output预算。
 纯速度三模式采用贪心，是因为自推测验证是greedy；不要用这里T=0的数字解释T=0.1 baseline。
 预热后测量不含模型加载/服务启动；加载状态和日志另存。
@@ -125,5 +128,7 @@ python -B scripts/verify_current5_metrics.py \
   --output <new-run>/metric-parity.json
 ```
 
+本轮实测：本地65项CPU测试通过；notebook65项通过（0.838s）；两端原函数差分500个cell/1000个parser答案一致。
+notebook证据保存在 `outputs/eval/current5_cpu_alignment_20261013_v1/metric-parity.json`、`cpu-tests.log`、`speed-plan/`。
 差分验证只用AST提取原指标/解析纯函数，用人工box/fake图片/fake worker对照，**不是模型推理实测**。
 不导入LA GPU模块，不复制checkpoint，不执行LA finalizer（它会重建/清理TensorBoard目录）。
