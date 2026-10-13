@@ -117,6 +117,13 @@ def launch_commands(plan):
     }
 
 
+def la_speed_command(plan):
+    return [plan['la_python'], '-u', '-m', 'eval.current5_la_speed',
+            '--protocol-root', plan['la_root'], '--la-root', plan['la_repo'],
+            '--model-path', plan['la_model'], '--output-dir', plan['la_speed_output'],
+            '--gpu', str(plan['gpus'][2])]
+
+
 def run_schedule(plan, state_dir, interval, max_wait_hours):
     deadline = time.monotonic() + max_wait_hours * 3600
     checks = 0
@@ -151,11 +158,32 @@ def run_schedule(plan, state_dir, interval, max_wait_hours):
             jobs[name] = {'pid': process.pid, 'command': command, 'log': str(log_path), 'started_at': utc()}
             write_json(state_dir / 'jobs.json', jobs)
         print('[START] LA complete and GPU1/2/3 free; owned GA work started', flush=True)
+        la_started = not bool(plan.get('la_speed_output'))
         while True:
             exits = {name: process.poll() for name, process in processes.items()}
-            write_json(state_dir / 'status.json', {'phase': 'running' if any(v is None for v in exits.values()) else 'finished',
-                                                 'checked_at': utc(), 'jobs': jobs, 'exit_codes': exits})
-            if all(v is not None for v in exits.values()):
+            la_wait_reason = None
+            if not la_started and exits.get('speculative') is not None:
+                try:
+                    gpu_snapshot([plan['gpus'][2]])
+                except (ValueError, subprocess.SubprocessError) as exc:
+                    la_wait_reason = str(exc)
+                else:
+                    command = la_speed_command(plan)
+                    with (state_dir / 'la-speed-launch-intent.json').open('x', encoding='utf-8') as stream:
+                        json.dump({'created_at': utc(), 'command': command}, stream, indent=2)
+                    log_path = state_dir / 'la-speed.log'
+                    handle = log_path.open('x', encoding='utf-8'); handles.append(handle)
+                    process = subprocess.Popen(command, cwd=ROOT,
+                        env=dict(os.environ, PYTHONUNBUFFERED='1', CUDA_VISIBLE_DEVICES=str(plan['gpus'][2]), PYTHONPATH=str(ROOT)),
+                        stdin=subprocess.DEVNULL, stdout=handle, stderr=subprocess.STDOUT, start_new_session=True)
+                    processes['la_speed'] = process
+                    jobs['la_speed'] = {'pid': process.pid, 'command': command, 'log': str(log_path), 'started_at': utc()}
+                    write_json(state_dir / 'jobs.json', jobs)
+                    la_started = True; exits['la_speed'] = None
+            write_json(state_dir / 'status.json', {'phase': 'running' if any(v is None for v in exits.values()) or not la_started else 'finished',
+                                                 'checked_at': utc(), 'jobs': jobs, 'exit_codes': exits,
+                                                 'la_speed_wait_reason': la_wait_reason})
+            if la_started and all(v is not None for v in exits.values()):
                 print('[FINISH] ' + json.dumps(exits), flush=True)
                 return 0 if all(v == 0 for v in exits.values()) else 1
             time.sleep(interval)
@@ -172,6 +200,10 @@ def main(argv=None):
     p.add_argument('--state-dir', required=True)
     p.add_argument('--baseline-output', required=True)
     p.add_argument('--speed-output', required=True)
+    p.add_argument('--la-speed-output')
+    p.add_argument('--la-python', default='/opt/venv/bin/python')
+    p.add_argument('--la-repo', default='/workspace/nas-data/LocateAnything')
+    p.add_argument('--la-model', default='/workspace/nas-data/LocateAnything/nvidia/LocateAnything-3B')
     p.add_argument('--gpus', default='1,2,3')
     p.add_argument('--queue-pids', default='246946,246947,246948')
     p.add_argument('--interval', type=int, default=120)
@@ -183,10 +215,12 @@ def main(argv=None):
         p.error('Require three distinct GPUs, interval>=30, max-wait-hours>0')
     state = Path(a.state_dir).resolve()
     outputs = [Path(a.baseline_output).resolve(), Path(a.speed_output).resolve()]
+    if a.la_speed_output:
+        outputs.append(Path(a.la_speed_output).resolve())
     for q in [state, *outputs]:
         if not q.is_relative_to(ROOT / 'outputs'):
             p.error('State and GA outputs must remain under project outputs/')
-    if state in outputs or outputs[0] == outputs[1]:
+    if state in outputs or len(set(outputs)) != len(outputs):
         p.error('State/baseline/speed paths must be distinct')
     root = Path(a.la_root).resolve()
     models = json.loads((root / 'models.json').read_text(encoding='utf-8'))
@@ -198,6 +232,8 @@ def main(argv=None):
     plan = {'la_root': str(root), 'protocol_sha256': source_hash(root / 'protocol.json'),
             'model_keys': sorted(models), 'queue_processes': identities, 'gpus': gpus,
             'baseline_output': str(outputs[0]), 'speed_output': str(outputs[1]),
+            'la_speed_output': str(outputs[2]) if a.la_speed_output else None,
+            'la_python': a.la_python, 'la_repo': a.la_repo, 'la_model': a.la_model,
             'interval': a.interval, 'max_wait_hours': a.max_wait_hours,
             'armed_at': utc(), 'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()}
     if a.dry_run:

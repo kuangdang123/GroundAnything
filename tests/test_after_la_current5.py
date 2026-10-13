@@ -59,6 +59,14 @@ class ScheduleTests(unittest.TestCase):
         self.complete();path=self.la/'results/m/summary.json';v=json.loads(path.read_text());v['forms']['negative']['per_game']={};path.write_text(json.dumps(v))
         self.assertFalse(a.result_complete(self.la,'m',self.protocol))
 
+    def test_la_speed_uses_separate_environment_and_third_gpu(self):
+        self.plan.update(la_python='/opt/venv/bin/python',la_repo='/la',la_model='/la/base',la_speed_output='/ga/output')
+        command=a.la_speed_command(self.plan)
+        self.assertEqual(command[0],'/opt/venv/bin/python')
+        self.assertIn('eval.current5_la_speed',command)
+        self.assertIn('3',command)
+        self.assertIn('/la/base',command)
+
     def test_launch_mapping_and_only_speculative_speed(self):
         commands=a.launch_commands(self.plan)
         self.assertIn('1,2',commands['baseline']);self.assertIn('3',commands['speculative']);self.assertIn('speculative',commands['speculative'])
