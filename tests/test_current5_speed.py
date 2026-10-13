@@ -279,6 +279,19 @@ class RunTests(unittest.TestCase):
                 speed.main(args)
             req.assert_not_called()
 
+    def test_before_request_isolation_failure_saves_partial_summary(self):
+        args=self.argv+['--gpu','GPU-fixture','--require-isolated']
+        isolated=dict(isolation='isolated',uuid='GPU-fixture',memory_used_mib=10)
+        foreign=dict(isolation='contaminated',uuid='GPU-fixture',memory_used_mib=20,foreign_pids=[999])
+        with patch.object(speed.GPUProbe,'sample',side_effect=[isolated,isolated,isolated,foreign]), patch.object(speed,'request',side_effect=lambda t,a:record(t)) as req:
+            with self.assertRaisesRegex(ValueError,'no processes were killed'):
+                speed.main(args)
+            self.assertEqual(req.call_count,1)
+        summary=self.read_json('summary.json')
+        self.assertEqual(summary['overall']['samples'],1)
+        self.assertEqual(summary['interruption']['phase'],'before_request')
+        self.assertFalse(summary['gpu']['benchmark_isolated'])
+
     def test_no_gpu_require_isolated_fails_before_request(self):
         with patch.object(speed, 'request') as req:
             with self.assertRaisesRegex(ValueError, 'unknown'):

@@ -123,8 +123,12 @@ def main(argv=None):
     p.add_argument('--startup-timeout', type=float, default=900)
     p.add_argument('--speed-per-cell', type=int, default=1)
     p.add_argument('--speed-repeats', type=int, default=3)
+    p.add_argument('--speed-modes', default='denoise,causal,speculative', help='Subset for clean retries; same protocol and sample selection')
     p.add_argument('--dry-run', action='store_true')
     args = p.parse_args(argv)
+    modes = args.speed_modes.split(',')
+    if not modes or len(set(modes)) != len(modes) or set(modes) - {'denoise','causal','speculative'}:
+        p.error('speed-modes must be a nonempty unique subset of denoise,causal,speculative')
     gpus = [int(x) for x in args.gpus.split(',')]
     ports = [int(x) for x in (args.ports or ('8111,8112' if args.action == 'baseline' else '8113')).split(',')]
     count = 2 if args.action == 'baseline' else 1
@@ -141,7 +145,7 @@ def main(argv=None):
                 speed_sampling={'temperature': 0, 'top_p': 1}, max_tokens=args.max_tokens,
                 batch_size=1, request_concurrency=1, tensor_parallel=1,
                 baseline_sharding='whole game/form cells round-robin',
-                speed_modes=['denoise', 'causal', 'speculative'],
+                speed_modes=modes,
                 speed_per_cell=args.speed_per_cell, speed_repeats=args.speed_repeats)
     if args.dry_run:
         print(json.dumps(plan, indent=2))
@@ -189,8 +193,8 @@ def main(argv=None):
                 raise RuntimeError(f'Baseline clients failed: {codes}')
             subprocess.run(client_command(args, output / 'baseline', ports[0], shards=2) + ['--summarize'], cwd=ROOT, check=True)
         else:
-            for mode in ('denoise','causal','speculative'):
-                if mode != 'denoise':
+            for mode_index, mode in enumerate(modes):
+                if mode_index:
                     gpu_snapshot(gpus)  # Previous owned service must have released GPU.
                 process = start_service(args, gpus[0], ports[0], mode, output / f'service_{mode}_gpu{gpus[0]}', processes, streams)
                 identity = speed_gpu_identity(gpus[0], process.pid)

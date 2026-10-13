@@ -15,6 +15,14 @@ class LaunchTests(unittest.TestCase):
             self.assertEqual(launch.main(['baseline','--gpus','1,2','--output-dir',str(launch.ROOT/'outputs/eval/current5_plan_v1'),'--dry-run']),0)
             self.assertEqual(launch.main(['speed','--gpus','3','--output-dir',str(launch.ROOT/'outputs/eval/current5_speed_plan_v1'),'--dry-run']),0)
 
+    def test_single_mode_retry_plan(self):
+        import io,json
+        from contextlib import redirect_stdout
+        text=io.StringIO()
+        with redirect_stdout(text):
+            self.assertEqual(launch.main(['speed','--gpus','0','--speed-modes','speculative','--output-dir',str(launch.ROOT/'outputs/eval/retry_plan_v1'),'--dry-run']),0)
+        self.assertEqual(json.loads(text.getvalue())['speed_modes'],['speculative'])
+
     def test_gpu_count_and_distinctness(self):
         with self.assertRaises(SystemExit):
             launch.main(['baseline','--gpus','1,1','--output-dir','outputs/x','--dry-run'])

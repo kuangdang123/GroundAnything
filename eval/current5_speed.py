@@ -406,6 +406,12 @@ def main(argv=None):
                 if (repeat, task['sample_id']) in seen:
                     continue  # Includes failed attempts: NEVER silently retry.
                 before = probe.sample()
+                if args.require_isolated and before['isolation'] != 'isolated':
+                    partial = summarize(records, expected)
+                    partial['interruption'] = {'phase': 'before_request', 'sample_id': task['sample_id'], 'gpu': before}
+                    partial['gpu']['isolation'] = before['isolation']
+                    partial['gpu']['benchmark_isolated'] = False
+                    write_json(output / 'summary.json', partial)
                 probe.require(before)
                 row = perform_request(task, args)
                 after = probe.sample()
