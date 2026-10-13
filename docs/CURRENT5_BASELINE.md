@@ -113,7 +113,8 @@ LA现有耗时范围是 PIL加载之后，worker detect生成+解析；GA HTTP�
 所以本工具报告GA端到端与HTTP范围，**不称为已实现跨后端同范围纯模型计时**。
 真正GA/LA应用级速度对照需在LA端补同一RGB输入准备起点、同一sample_manifest、warmup、单卡batch1/并发1、同输出预算。
 分别记录LA generation_mode fast/hybrid/slow与GA三模式，不能凭名字认定算法一一对应。
-共享卡速度只能标为受争用观测；启动器要求速度卡无外来compute PID。其他GPU同时跑baseline仍可能有CPU/NAS争用，严格最终基准最好再单独复测。
+共享卡速度只能标为受争用观测；启动器要求速度卡无外来compute PID。
+notebook 实测 NVML 返回宿主PID，`/proc`仅显示容器PID，不能直接比对。启动器对**启动前空卡、就绪后唯一不可见driver PID**进行固定记录，并在每次请求前后拒绝新增/替换PID；每mode记录 `gpu-identity-<mode>.json`，服务停后再确认卡释放。这是空卡时序证据，**不是证明宿主/容器PID映射**，外部竞争窗口仍存在；多PID或可见但不属于服务时拒绝继续。其他GPU同时跑baseline仍可能有CPU/NAS争用，严格最终基准最好再单独复测。
 
 ## 4. 产物与 CPU 验证
 

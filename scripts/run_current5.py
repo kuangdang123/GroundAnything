@@ -74,6 +74,29 @@ def start_service(args, gpu, port, mode, output, processes, streams):
     raise TimeoutError(f'Service startup timed out; see {output / "console.log"}')
 
 
+def speed_gpu_identity(gpu, service_pid):
+    """Pin the post-start driver PID on a card verified empty before launch.
+
+    Containers may expose only namespace PIDs while NVML returns host PIDs.
+    This is an empty-card/exclusive-single-process observation, NOT a proven
+    host<->container PID translation. New/additional PIDs remain forbidden.
+    """
+    from eval.current5_speed import descendants
+    query = subprocess.run(['nvidia-smi', '-i', str(gpu), '--query-gpu=uuid', '--format=csv,noheader'], capture_output=True, text=True, check=True)
+    uuid = query.stdout.strip()
+    apps = subprocess.run(['nvidia-smi', '--query-compute-apps=pid,gpu_uuid,used_memory', '--format=csv,noheader,nounits'], capture_output=True, text=True, check=True)
+    rows = [line.split(',') for line in apps.stdout.splitlines() if line.strip()]
+    pids = [int(row[0]) for row in rows if row[1].strip() == uuid]
+    local = descendants(service_pid)
+    if set(pids).issubset(local) and pids:
+        return {'method': 'observable-service-descendants', 'uuid': uuid, 'allowed_driver_pids': pids}
+    if len(pids) != 1 or (Path('/proc') / str(pids[0])).exists():
+        raise RuntimeError('Cannot safely pin namespace-mismatched GPU processes: ' + str(pids))
+    return {'method': 'empty-card-before-launch/single-unobservable-driver-pid-after-ready',
+            'uuid': uuid, 'allowed_driver_pids': pids, 'service_parent_pid': service_pid,
+            'limitation': 'Not a proven PID translation; possible external race remains. Stop/release is checked.'}
+
+
 def stop(process):
     if process.poll() is None:
         os.killpg(process.pid, signal.SIGTERM)
@@ -170,12 +193,15 @@ def main(argv=None):
                 if mode != 'denoise':
                     gpu_snapshot(gpus)  # Previous owned service must have released GPU.
                 process = start_service(args, gpus[0], ports[0], mode, output / f'service_{mode}_gpu{gpus[0]}', processes, streams)
+                identity = speed_gpu_identity(gpus[0], process.pid)
+                write_json(output / f'gpu-identity-{mode}.json', identity)
                 cmd = [sys.executable, '-u', '-m', 'eval.current5_speed', '--protocol-root', args.protocol_root,
                        '--output-dir', str(output / mode), '--base-url', f'http://127.0.0.1:{ports[0]}/v1',
                        '--mode', mode, '--prompt-mode', args.prompt_mode, '--max-tokens', str(args.max_tokens),
                        '--per-cell', str(args.speed_per_cell), '--repeats', str(args.speed_repeats),
                        '--manifest', str(output / 'sample_manifest.json'), '--gpu', str(gpus[0]),
-                       '--require-isolated', '--service-parent-pid', str(process.pid)]
+                       '--require-isolated', '--service-parent-pid', str(process.pid),
+                       '--allowed-gpu-pids', ','.join(map(str, identity['allowed_driver_pids']))]
                 subprocess.run(cmd, cwd=ROOT, check=True)
                 stop(process)
         print(f'[OP:成功] {args.action} -> {output}', flush=True)

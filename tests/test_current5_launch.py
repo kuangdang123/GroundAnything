@@ -21,6 +21,21 @@ class LaunchTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             launch.main(['speed','--gpus','1,2','--output-dir','outputs/x','--dry-run'])
 
+    def test_speed_identity_pins_single_unobservable_host_pid(self):
+        from types import SimpleNamespace
+        replies = [SimpleNamespace(stdout='GPU-test\n'), SimpleNamespace(stdout='74778, GPU-test, 14000\n')]
+        with patch.object(launch.subprocess, 'run', side_effect=replies), patch('eval.current5_speed.descendants', return_value={280463,281288}), patch.object(launch.Path, 'exists', return_value=False):
+            identity = launch.speed_gpu_identity(0,280463)
+        self.assertEqual(identity['allowed_driver_pids'], [74778])
+        self.assertIn('Not a proven', identity['limitation'])
+
+    def test_speed_identity_rejects_multiple_unknown_pids(self):
+        from types import SimpleNamespace
+        replies = [SimpleNamespace(stdout='GPU-test\n'), SimpleNamespace(stdout='74778, GPU-test, 14000\n88888, GPU-test, 1000\n')]
+        with patch.object(launch.subprocess, 'run', side_effect=replies), patch('eval.current5_speed.descendants', return_value={280463,281288}):
+            with self.assertRaisesRegex(RuntimeError, 'Cannot safely pin'):
+                launch.speed_gpu_identity(0,280463)
+
     def test_service_plan_one_visible_device_one_instance(self):
         command, env = launch.service_command(3,8113,'causal',launch.ROOT/'outputs/eval/current5_v1/service', 'weights/dlm_bundle',0.4)
         self.assertEqual(env['CUDA_VISIBLE_DEVICES'],'3')
